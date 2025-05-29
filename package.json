@@ -2,8 +2,10 @@
   "name": "banking-system",
   "version": "1.0.0",
   "description": "",
-  "main": "index.js",
+  "main": "app.js",
   "scripts": {
+    "start": "node app.js",
+    "dev": "nodemon app.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
@@ -17,7 +19,8 @@
     "jsonwebtoken": "^9.0.2",
     "mongoose": "^8.15.1",
     "swagger-jsdoc": "^6.2.8",
-    "swagger-ui-express": "^5.0.1"
+    "swagger-ui-express": "^5.0.1",
+    "validator": "^13.15.15"
   },
   "devDependencies": {
     "nodemon": "^3.1.10"

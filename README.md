@@ -22,7 +22,7 @@
 
 <pre>
 git clone https://github.com/Aastha0305/DigiPurse.git
-cd digital-wallet-backend
+cd DigiPurse
 npm install
 </pre>
 

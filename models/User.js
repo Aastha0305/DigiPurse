@@ -44,7 +44,8 @@ const userSchema = new mongoose.Schema({
   updatedAt: {
     type: Date,
     default: Date.now
-  }
+  },
+  isDeleted: { type: Boolean, default: false }
 });
 
 // Hash password before saving
@@ -67,5 +68,5 @@ userSchema.methods.comparePassword = async function (candidatePassword) {
   return await bcrypt.compare(candidatePassword, this.password);
 };
 
-const User = mongoose.model("User", userSchema);
-module.exports = User;
+
+module.exports = mongoose.model('User', userSchema);

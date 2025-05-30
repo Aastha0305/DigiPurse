@@ -4,7 +4,7 @@ const currencySchema = new mongoose.Schema({
   type: { 
     type: String, 
     required: true,
-    enum: ['USD', 'EUR', 'GBP', 'INR'] // Add supported currencies
+    enum: ['INR', 'EUR', 'GBP', 'USD'] // Add supported currencies
   },
   balance: { 
     type: Number, 
@@ -24,7 +24,7 @@ const walletSchema = new mongoose.Schema({
   currencies: [currencySchema]
 });
 
-// Add/update currency balance
+// Add or update currency balance
 walletSchema.methods.updateBalance = function(currencyType, amount) {
   const currency = this.currencies.find(c => c.type === currencyType);
   if (!currency) {

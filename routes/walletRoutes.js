@@ -2,10 +2,12 @@ const express = require('express');
 const router = express.Router();
 const Wallet = require('../models/Wallet');
 const Transaction = require('../models/Transaction');
+const sendEmailAlert = require('../utils/email');
+const User = require('../models/User');
 const { authMiddleware } = require('./authRoutes');
 const AdminError = 'Admin access required';
 // Supported currencies
-const SUPPORTED_CURRENCIES = ['USD', 'EUR', 'GBP', 'INR'];
+const SUPPORTED_CURRENCIES = ['USD', 'EUR', 'GBP','INR'];
 // Exchange rates to INR (latest)
 const EXCHANGE_RATES_TO_INR = {
   INR: 1,                 
@@ -15,7 +17,7 @@ const EXCHANGE_RATES_TO_INR = {
 };
 const LARGE_WITHDRAWAL_LIMIT_INR = 1000000; // 10 lakh inr
 
-// Deposit funds (updated with null check)
+// Deposit funds
 router.post('/deposit', authMiddleware, async (req, res) => {
   const session = await Wallet.startSession();
   session.startTransaction();
@@ -54,7 +56,7 @@ router.post('/deposit', authMiddleware, async (req, res) => {
   }
 });
 
-// Withdraw funds (updated with null check)
+// Withdraw funds 
 router.post('/withdraw', authMiddleware, async (req, res) => {
   const session = await Wallet.startSession();
   session.startTransaction();
@@ -67,10 +69,21 @@ router.post('/withdraw', authMiddleware, async (req, res) => {
       throw new Error('Unsupported currency');
     }
 
-    // Convert withdrawal amount to INR for fraud check
+    // Converting withdrawal amount to INR for fraud check
     const rate = EXCHANGE_RATES_TO_INR[currency] || 1;
     const amountInINR = amount * rate;
     const isLargeWithdrawal = amountInINR > LARGE_WITHDRAWAL_LIMIT_INR;
+    
+    //Mock email alert for large withdrawals
+    if (isLargeWithdrawal) {
+      // Get user's email
+      const user = await User.findById(req.user);
+      sendEmailAlert(
+        user.email,
+        'Alert: Large Withdrawal Detected',
+        `A large withdrawal of ${amount} ${currency} was detected on your account. If this was not you, please contact  support immediately.`
+      );
+    }
 
     const wallet = await Wallet.findOne({ user: req.user }).session(session);
 
@@ -105,7 +118,7 @@ router.post('/withdraw', authMiddleware, async (req, res) => {
   }
 });
 
-// Transfer funds (updated with null checks)
+// Transfer funds
 router.post('/transfer', authMiddleware, async (req, res) => {
   const session = await Wallet.startSession();
   session.startTransaction();
@@ -117,14 +130,14 @@ router.post('/transfer', authMiddleware, async (req, res) => {
       throw new Error('Unsupported currency');
     }
     
-    // Sender's wallet (null check added)
+    // Sender's wallet 
     const fromWallet = await Wallet.findOne({ user: req.user }).session(session);
     if (!fromWallet) {
       throw new Error('Sender wallet not found');
     }
 
 
-    // Receiver's wallet (null check added)
+    // Receiver's wallet
     const toWallet = await Wallet.findOne({ user: toUserId }).session(session);
     if (!toWallet) {
       throw new Error('Recipient wallet not found');
@@ -136,7 +149,7 @@ router.post('/transfer', authMiddleware, async (req, res) => {
       throw new Error('Insufficient funds');
     }
 
-    // Fraud check: More than 3 transfers in 10 minutes?
+    // Fraud checking: more than 3 transfers in 10 minutes?
     const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
     const recentTransfers = await Transaction.countDocuments({
       user: req.user,
@@ -144,6 +157,16 @@ router.post('/transfer', authMiddleware, async (req, res) => {
       createdAt: { $gte: tenMinutesAgo }
     });
     const isFrequentTransfer = recentTransfers >= 3;
+
+    // Mock email alert for frequent transfers
+    if (isFrequentTransfer) {
+      const user = await User.findById(req.user);
+      sendEmailAlert(
+        user.email,
+        'Alert: Suspicious Transfer Activity',
+        `Multiple transfers were detected from your account in a short period. If this was not you, please review your   account activity.`
+      );
+    }
 
     // Update balances
     fromWallet.updateBalance(currency, -amount);
@@ -185,9 +208,9 @@ router.post('/transfer', authMiddleware, async (req, res) => {
 // Transaction history for the logged-in user
 router.get('/transactions', authMiddleware, async (req, res) => {
   try {
-    const transactions = await Transaction.find({ user: req.user })
+    const transactions = await Transaction.find({ user: req.user, isDeleted: false })
       .sort({ createdAt: -1 }) // Most recent first
-      .populate('toUser', 'username email') // Optional: shows receiver info for transfers
+      .populate('toUser', 'username email') //shows receiver info for transfers
       .exec();
     res.json(transactions);
   } catch (err) {
@@ -195,7 +218,7 @@ router.get('/transactions', authMiddleware, async (req, res) => {
   }
 });
 
-// Enhanced: Get wallet balances by currency for the logged-in user
+// Get wallet balances by currency for the logged-in user
 router.get('/balance', authMiddleware, async (req, res) => {
   try {
     const wallet = await Wallet.findOne({ user: req.user }).populate('user', 'username email');
@@ -203,7 +226,7 @@ router.get('/balance', authMiddleware, async (req, res) => {
       return res.status(404).json({ error: 'Wallet not found' });
     }
 
-    // Create a summary object: { USD: 100, EUR: 50, ... }
+    // Create a summary object like{USD: 100,INR: 50, ..}
     const balances = {};
     wallet.currencies.forEach(c => {
       balances[c.type] = c.balance;
@@ -217,7 +240,6 @@ router.get('/balance', authMiddleware, async (req, res) => {
     res.status(500).json({ error: 'Could not fetch wallet balance' });
   }
 });
-
 
 
 router.get('/all-balances', authMiddleware, async (req, res) => {
@@ -267,7 +289,7 @@ const adminMiddleware = (req, res, next) => {
 // Get flagged transactions (admin-only)
 router.get('/admin/flagged-transactions', adminMiddleware, async (req, res) => {
   try {
-    const transactions = await Transaction.find({ flagged: true })
+    const transactions = await Transaction.find({ flagged: true, isDeleted: false })
       .populate('user', 'username email')
       .populate('toUser', 'username email');
     res.json(transactions);
@@ -300,14 +322,21 @@ router.get('/admin/total-balances', adminMiddleware, async (req, res) => {
 router.get('/admin/top-users-by-balance', adminMiddleware, async (req, res) => {
   try {
     // Aggregate total balance per user (sum of all currencies)
-    const wallets = await Wallet.find({}).populate('user', 'username email');
-    const userBalances = wallets.map(wallet => {
-      const total = wallet.currencies.reduce((sum, c) => sum + c.balance, 0);
-      return {
-        user: wallet.user,
-        totalBalance: total
-      };
+    const wallets = await Wallet.find({})
+    .populate({
+      path: 'user',      
+      select: 'username email'
     });
+    const userBalances = wallets
+      .filter(wallet => wallet.user) // Only include wallets with active users
+      .map(wallet => {
+        const total = wallet.currencies.reduce((sum, c) => sum + c.balance, 0);
+        return {
+          user: wallet.user,
+          totalBalance: total
+        };
+    });
+
     // Sort descending and take top 10
     userBalances.sort((a, b) => b.totalBalance - a.totalBalance);
     res.json({ topUsers: userBalances.slice(0, 10) });
@@ -337,6 +366,42 @@ router.get('/admin/top-users-by-transactions', adminMiddleware, async (req, res)
     res.json({ topUsers });
   } catch (err) {
     res.status(500).json({ error: 'Failed to fetch top users by transactions' });
+  }
+});
+
+// Soft delete a user (admin only)
+router.delete('/admin/users/:id', adminMiddleware, async (req, res) => {
+  try {
+    await User.findByIdAndUpdate(req.params.id, { isDeleted: true });
+    res.json({ message: 'User soft deleted' });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to soft delete user' });
+  }
+});
+
+// Soft delete a transaction (admin only)
+router.delete('/admin/transactions/:id', adminMiddleware, async (req, res) => {
+  await Transaction.findByIdAndUpdate(req.params.id, { isDeleted: true });
+  res.json({ message: 'Transaction soft deleted' });
+});
+
+// Restore a soft-deleted user (admin only)
+router.patch('/admin/users/:id/restore', adminMiddleware, async (req, res) => {
+  try {
+    await User.findByIdAndUpdate(req.params.id, { isDeleted: false });
+    res.json({ message: 'User restored' });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to restore user' });
+  }
+});
+
+// Restore a soft-deleted transaction (admin only)
+router.patch('/admin/transactions/:id/restore', adminMiddleware, async (req, res) => {
+  try {
+    await Transaction.findByIdAndUpdate(req.params.id, { isDeleted: false });
+    res.json({ message: 'Transaction restored' });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to restore transaction' });
   }
 });
 

@@ -37,7 +37,7 @@ router.post('/register', async (req, res) => {
       return res.status(400).json({ error: 'Password must be at least 6 characters' });
     }
 
-    // Check for existing user (by email or username)
+    // Check for existing user ,by email or username
     const existingUser = await User.findOne({ $or: [{ email }, { username }] });
     if (existingUser) {
       return res.status(400).json({ error: 'User already exists' });
@@ -51,7 +51,7 @@ router.post('/register', async (req, res) => {
     });
     await user.save();
 
-    // Create wallet for the new user (added)
+    // Create wallet for the new user 
     await Wallet.create({
       user: user._id,
       currencies: [] // Initial empty currencies array
@@ -112,5 +112,5 @@ router.post('/login', async (req, res) => {
   }
 });
 
-// Export as an object
+// Exports
 module.exports = { router, authMiddleware };

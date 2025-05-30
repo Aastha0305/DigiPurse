@@ -359,3 +359,90 @@ paths:
           description: Forbidden
       security:
         - bearerAuth: []
+    /admin/users/{id}:
+    delete:
+      summary: Soft delete a user (admin only)
+      tags:
+        - Admin
+      parameters:
+        - in: path
+          name: id
+          schema:
+            type: string
+          required: true
+          description: User ID
+      responses:
+        '200':
+          description: User soft deleted
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
+      security:
+        - bearerAuth: []
+
+  /admin/users/{id}/restore:
+    patch:
+      summary: Restore a soft-deleted user (admin only)
+      tags:
+        - Admin
+      parameters:
+        - in: path
+          name: id
+          schema:
+            type: string
+          required: true
+          description: User ID
+      responses:
+        '200':
+          description: User restored
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
+      security:
+        - bearerAuth: []
+
+  /admin/transactions/{id}:
+    delete:
+      summary: Soft delete a transaction (admin only)
+      tags:
+        - Admin
+      parameters:
+        - in: path
+          name: id
+          schema:
+            type: string
+          required: true
+          description: Transaction ID
+      responses:
+        '200':
+          description: Transaction soft deleted
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
+      security:
+        - bearerAuth: []
+
+  /admin/transactions/{id}/restore:
+    patch:
+      summary: Restore a soft-deleted transaction (admin only)
+      tags:
+        - Admin
+      parameters:
+        - in: path
+          name: id
+          schema:
+            type: string
+          required: true
+          description: Transaction ID
+      responses:
+        '200':
+          description: Transaction restored
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
+      security:
+        - bearerAuth: []

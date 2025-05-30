@@ -53,9 +53,11 @@ npm run dev
   <li><code>/api/wallet/deposit</code>, <code>/api/wallet/withdraw</code>, <code>/api/wallet/transfer</code></li>
   <li><code>/api/wallet/transactions</code>, <code>/api/wallet/balance</code></li>
   <li><code>/api/wallet/admin/flagged-transactions</code>, <code>/api/wallet/admin/total-balances</code>, <code>/api/wallet/admin/top-users-by-balance</code></li>
+  <li><code>/api/wallet/admin/users/:id</code>, <code>/api/wallet/admin/users/:id/restore</code>, <code>/api/wallet/admin/transactions/:id</code>, <code>/api/wallet/admin/transactions/:id/restore</code></li>
+ </li>
 </ul>
 
 <h3>📝 License</h3>
 <p>For educational/demo use.</p>
 
-<!-- <p align="center"><b>Made with ❤️ by Aastha</b></p> -->
+<p align="center"><b>Made by Aastha</b></p> 

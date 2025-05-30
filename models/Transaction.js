@@ -27,7 +27,8 @@ const transactionSchema = new mongoose.Schema({
   createdAt: { 
     type: Date, 
     default: Date.now 
-  }
+  },
+  flagged: { type: Boolean, default: false }
 });
 
 module.exports = mongoose.model('Transaction', transactionSchema);

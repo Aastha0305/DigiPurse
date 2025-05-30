@@ -3,6 +3,17 @@ const router = express.Router();
 const Wallet = require('../models/Wallet');
 const Transaction = require('../models/Transaction');
 const { authMiddleware } = require('./authRoutes');
+const AdminError = 'Admin access required';
+// Supported currencies
+const SUPPORTED_CURRENCIES = ['USD', 'EUR', 'GBP', 'INR'];
+// Exchange rates to INR (latest)
+const EXCHANGE_RATES_TO_INR = {
+  INR: 1,                 
+  USD: 85,                  
+  EUR: 95,                  
+  GBP: 108                  
+};
+const LARGE_WITHDRAWAL_LIMIT_INR = 1000000; // 10 lakh inr
 
 // Deposit funds (updated with null check)
 router.post('/deposit', authMiddleware, async (req, res) => {
@@ -11,6 +22,11 @@ router.post('/deposit', authMiddleware, async (req, res) => {
   
   try {
     const { amount, currency } = req.body;
+
+    if (!SUPPORTED_CURRENCIES.includes(currency)) {
+      throw new Error('Unsupported currency');
+    }
+
     const wallet = await Wallet.findOne({ user: req.user }).session(session);
 
     // Null check added
@@ -45,6 +61,17 @@ router.post('/withdraw', authMiddleware, async (req, res) => {
 
   try {
     const { amount, currency } = req.body;
+
+
+    if (!SUPPORTED_CURRENCIES.includes(currency)) {
+      throw new Error('Unsupported currency');
+    }
+
+    // Convert withdrawal amount to INR for fraud check
+    const rate = EXCHANGE_RATES_TO_INR[currency] || 1;
+    const amountInINR = amount * rate;
+    const isLargeWithdrawal = amountInINR > LARGE_WITHDRAWAL_LIMIT_INR;
+
     const wallet = await Wallet.findOne({ user: req.user }).session(session);
 
     // Null check added
@@ -64,7 +91,8 @@ router.post('/withdraw', authMiddleware, async (req, res) => {
       user: req.user,
       type: 'withdraw',
       amount,
-      currency
+      currency,
+      flagged: isLargeWithdrawal // Flag if large
     }], { session });
 
     await session.commitTransaction();
@@ -84,6 +112,10 @@ router.post('/transfer', authMiddleware, async (req, res) => {
 
   try {
     const { toUserId, amount, currency } = req.body;
+
+    if (!SUPPORTED_CURRENCIES.includes(currency)) {
+      throw new Error('Unsupported currency');
+    }
     
     // Sender's wallet (null check added)
     const fromWallet = await Wallet.findOne({ user: req.user }).session(session);
@@ -91,16 +123,27 @@ router.post('/transfer', authMiddleware, async (req, res) => {
       throw new Error('Sender wallet not found');
     }
 
+
     // Receiver's wallet (null check added)
     const toWallet = await Wallet.findOne({ user: toUserId }).session(session);
     if (!toWallet) {
       throw new Error('Recipient wallet not found');
     }
 
+
     const fromCurrency = fromWallet.currencies.find(c => c.type === currency);
     if (!fromCurrency || fromCurrency.balance < amount) {
       throw new Error('Insufficient funds');
     }
+
+    // Fraud check: More than 3 transfers in 10 minutes?
+    const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
+    const recentTransfers = await Transaction.countDocuments({
+      user: req.user,
+      type: 'transfer',
+      createdAt: { $gte: tenMinutesAgo }
+    });
+    const isFrequentTransfer = recentTransfers >= 3;
 
     // Update balances
     fromWallet.updateBalance(currency, -amount);
@@ -109,23 +152,24 @@ router.post('/transfer', authMiddleware, async (req, res) => {
     await fromWallet.save();
     await toWallet.save();
 
-    // Create transactions
+    // Create transactions with flag
     await Transaction.create([
-  {
-    user: req.user,
-    type: 'transfer',
-    amount: amount,
-    currency,
-    toUser: toUserId
-  },
-  {
-    user: toUserId,
-    type: 'transfer',
-    amount,
-    currency,
-    toUser: req.user
-  }
-], { session, ordered: true });
+      {
+        user: req.user,
+        type: 'transfer',
+        amount: amount,
+        currency,
+        toUser: toUserId,
+        flagged: isFrequentTransfer // Flag if frequent
+      },
+      {
+        user: toUserId,
+        type: 'transfer',
+        amount,
+        currency,
+        toUser: req.user
+      }
+    ], { session, ordered: true });
 
 
     await session.commitTransaction();
@@ -148,6 +192,151 @@ router.get('/transactions', authMiddleware, async (req, res) => {
     res.json(transactions);
   } catch (err) {
     res.status(500).json({ error: 'Could not fetch transactions' });
+  }
+});
+
+// Enhanced: Get wallet balances by currency for the logged-in user
+router.get('/balance', authMiddleware, async (req, res) => {
+  try {
+    const wallet = await Wallet.findOne({ user: req.user }).populate('user', 'username email');
+    if (!wallet) {
+      return res.status(404).json({ error: 'Wallet not found' });
+    }
+
+    // Create a summary object: { USD: 100, EUR: 50, ... }
+    const balances = {};
+    wallet.currencies.forEach(c => {
+      balances[c.type] = c.balance;
+    });
+
+    res.json({
+      user: wallet.user,
+      balances
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'Could not fetch wallet balance' });
+  }
+});
+
+
+
+router.get('/all-balances', authMiddleware, async (req, res) => {
+  try {
+    const wallet = await Wallet.findOne({ user: req.user });
+    if (!wallet) {
+      return res.status(404).json({ error: 'Wallet not found' });
+    }
+
+    // Initialize all supported currencies to 0
+    const balances = {};
+    SUPPORTED_CURRENCIES.forEach(cur => {
+      balances[cur] = 0;
+    });
+
+    // Overwrite with actual balances
+    wallet.currencies.forEach(c => {
+      balances[c.type] = c.balance;
+    });
+
+    res.json({ balances });
+  } catch (err) {
+    res.status(500).json({ error: 'Could not fetch wallet balances' });
+  }
+});
+
+router.get('/details', authMiddleware, async (req, res) => {
+  try {
+    const wallet = await Wallet.findOne({ user: req.user }).populate('user', 'username email');
+    if (!wallet) {
+      return res.status(404).json({ error: 'Wallet not found' });
+    }
+    res.json(wallet);
+  } catch (err) {
+    res.status(500).json({ error: 'Could not fetch wallet details' });
+  }
+});
+
+// Add admin middleware
+const adminMiddleware = (req, res, next) => {
+  
+  const isAdmin = req.header('Admin-Key') === process.env.ADMIN_SECRET;
+  if (!isAdmin) return res.status(403).json({ error: AdminError });
+  next();
+};
+
+// Get flagged transactions (admin-only)
+router.get('/admin/flagged-transactions', adminMiddleware, async (req, res) => {
+  try {
+    const transactions = await Transaction.find({ flagged: true })
+      .populate('user', 'username email')
+      .populate('toUser', 'username email');
+    res.json(transactions);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch flagged transactions' });
+  }
+});
+
+// Get total user balances (admin-only)
+router.get('/admin/total-balances', adminMiddleware, async (req, res) => {
+  try {
+    // Aggregate total balances by currency
+    const wallets = await Wallet.find({});
+    const totals = {};
+
+    wallets.forEach(wallet => {
+      wallet.currencies.forEach(c => {
+        if (!totals[c.type]) totals[c.type] = 0;
+        totals[c.type] += c.balance;
+      });
+    });
+
+    res.json({ totalBalances: totals });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to aggregate balances' });
+  }
+});
+
+// Top users by total balance (admin-only)
+router.get('/admin/top-users-by-balance', adminMiddleware, async (req, res) => {
+  try {
+    // Aggregate total balance per user (sum of all currencies)
+    const wallets = await Wallet.find({}).populate('user', 'username email');
+    const userBalances = wallets.map(wallet => {
+      const total = wallet.currencies.reduce((sum, c) => sum + c.balance, 0);
+      return {
+        user: wallet.user,
+        totalBalance: total
+      };
+    });
+    // Sort descending and take top 10
+    userBalances.sort((a, b) => b.totalBalance - a.totalBalance);
+    res.json({ topUsers: userBalances.slice(0, 10) });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch top users' });
+  }
+});
+
+// Top users by transaction count (admin-only)
+router.get('/admin/top-users-by-transactions', adminMiddleware, async (req, res) => {
+  try {
+    const pipeline = [
+      { $group: { _id: "$user", transactionCount: { $sum: 1 } } },
+      { $sort: { transactionCount: -1 } },
+      { $limit: 10 },
+      { $lookup: {
+          from: "users",
+          localField: "_id",
+          foreignField: "_id",
+          as: "userInfo"
+        }
+      },
+      { $unwind: "$userInfo" },
+      { $project: { _id: 0, user: "$userInfo.username", email: "$userInfo.email", transactionCount: 1 } }
+    ];
+    const topUsers = await Transaction.aggregate(pipeline);
+    res.json({ topUsers });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch top users by transactions' });
   }
 });
 

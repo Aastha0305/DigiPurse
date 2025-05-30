@@ -4,7 +4,7 @@ const dotenv = require('dotenv');
 const swaggerJsDoc = require('swagger-jsdoc');
 const swaggerUi = require('swagger-ui-express');
 const { router: authRoutes, authMiddleware } = require('./routes/authRoutes');
-
+const walletRoutes = require('./routes/walletRoutes');
 // Load environment variables from .env file
 dotenv.config();
 
@@ -46,6 +46,7 @@ app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocs));
 
 // Register routes BEFORE starting the server
 app.use('/api/auth', authRoutes);
+app.use('/api/wallet', walletRoutes);
 app.get('/api/protected', authMiddleware, (req, res) => { // Protected route example
   res.json({ message: 'Protected route accessed!', userId: req.user });
 });

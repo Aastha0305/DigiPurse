@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const User = require('../models/User');
+const Wallet = require('../models/Wallet');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcrypt');
 const validator = require('validator');
@@ -49,6 +50,12 @@ router.post('/register', async (req, res) => {
       password
     });
     await user.save();
+
+    // Create wallet for the new user (added)
+    await Wallet.create({
+      user: user._id,
+      currencies: [] // Initial empty currencies array
+    });
 
     // Generate JWT
     const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: '1h' });

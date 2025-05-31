@@ -21,8 +21,8 @@
 <h3>🛠️ Getting Started</h3>
 
 <pre>
-git clone https://github.com/yourusername/digital-wallet-backend.git
-cd digital-wallet-backend
+git clone https://github.com/Aastha0305/DigiPurse.git
+cd DigiPurse
 npm install
 </pre>
 

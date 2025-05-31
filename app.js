@@ -36,11 +36,6 @@ app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument));
 app.use('/api/auth', authRoutes);
 app.use('/api/wallet', walletRoutes);
 
-// Protected route example
-app.get('/api/protected', authMiddleware, (req, res) => {
-  res.json({ message: 'Protected route accessed!', userId: req.user });
-});
-
 // Basic route
 app.get('/', (req, res) => {
   res.send('Digital Wallet Backend is running!');
